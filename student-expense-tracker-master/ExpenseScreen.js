@@ -8,8 +8,26 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
+import { BarChart } from 'react-native-chart-kit';
+
+const screenWidth = Dimensions.get('window').width;
+
+const chartConfig = {
+  backgroundGradientFrom: '#111827',
+  backgroundGradientTo: '#111827',
+  color: () => '#fbbf24',
+  labelColor: () => '#e5e7eb',
+  decimalPlaces: 2,
+  style: { borderRadius: 8 },
+  barPercentage: 0.7,
+};
 
 export default function ExpenseScreen() {
   const db = useSQLiteContext();
@@ -18,7 +36,7 @@ export default function ExpenseScreen() {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('all'); // 'all' | 'week' | 'month'
   const [totalAmount, setTotalAmount] = useState(0);
   const [categoryTotals, setCategoryTotals] = useState({});
   const [editingId, setEditingId] = useState(null);
@@ -56,15 +74,17 @@ export default function ExpenseScreen() {
     setCategoryTotals(byCategory);
   }
 
-  const loadExpenses = async (selectedFilter = filter) => {
+  const loadExpenses = async (selectedFilter) => {
+    const currentFilter = selectedFilter || filter;
+
     let query = 'SELECT * FROM expenses ORDER BY id DESC;';
     let params = [];
 
-    if (selectedFilter === 'week') {
+    if (currentFilter === 'week') {
       const startOfWeek = getStartOfWeekString();
       query = 'SELECT * FROM expenses WHERE date >= ? ORDER BY id DESC;';
       params = [startOfWeek];
-    } else if (selectedFilter === 'month') {
+    } else if (currentFilter === 'month') {
       const startOfMonth = getStartOfMonthString();
       query = 'SELECT * FROM expenses WHERE date >= ? ORDER BY id DESC;';
       params = [startOfMonth];
@@ -173,108 +193,127 @@ export default function ExpenseScreen() {
     loadExpenses(nextFilter);
   };
 
+  const categoryLabels = Object.keys(categoryTotals);
+  const categoryValues = categoryLabels.map((key) => categoryTotals[key] || 0);
+
+  const chartData = {
+    labels: categoryLabels,
+    datasets: [{ data: categoryValues }],
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.heading}>Student Expense Tracker</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={80}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <SafeAreaView style={styles.container}>
+          <Text style={styles.heading}>Student Expense Tracker</Text>
 
-      <View style={styles.filters}>
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
-          onPress={() => handleFilterChange('all')}
-        >
-          <Text style={styles.filterButtonText}>All</Text>
-        </TouchableOpacity>
+          <View style={styles.filters}>
+            <TouchableOpacity
+              style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
+              onPress={() => handleFilterChange('all')}
+            >
+              <Text style={styles.filterButtonText}>All</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'week' && styles.filterButtonActive]}
-          onPress={() => handleFilterChange('week')}
-        >
-          <Text style={styles.filterButtonText}>This Week</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, filter === 'week' && styles.filterButtonActive]}
+              onPress={() => handleFilterChange('week')}
+            >
+              <Text style={styles.filterButtonText}>This Week</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'month' && styles.filterButtonActive]}
-          onPress={() => handleFilterChange('month')}
-        >
-          <Text style={styles.filterButtonText}>This Month</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          placeholder="Amount (e.g. 12.50)"
-          placeholderTextColor="#9ca3af"
-          value={amount}
-          onChangeText={setAmount}
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Category (Food, Books, Rent...)"
-          placeholderTextColor="#9ca3af"
-          value={category}
-          onChangeText={setCategory}
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Note (optional)"
-          placeholderTextColor="#9ca3af"
-          value={note}
-          onChangeText={setNote}
-        />
-
-        <Button
-          title={editingId !== null ? 'Save Changes' : 'Add Expense'}
-          onPress={addExpense}
-        />
-
-        {editingId !== null && (
-          <View style={{ marginTop: 8 }}>
-            <Button title="Cancel Edit" onPress={cancelEdit} />
+            <TouchableOpacity
+              style={[styles.filterButton, filter === 'month' && styles.filterButtonActive]}
+              onPress={() => handleFilterChange('month')}
+            >
+              <Text style={styles.filterButtonText}>This Month</Text>
+            </TouchableOpacity>
           </View>
-        )}
-      </View>
 
-      <View style={styles.totalsSection}>
-        <Text style={styles.totalsHeading}>Totals ({getFilterLabel()})</Text>
-        <Text style={styles.totalAmountText}>
-          Total Spending: ${totalAmount.toFixed(2)}
-        </Text>
+          <View style={styles.form}>
+            <TextInput
+              style={styles.input}
+              keyboardType="numeric"
+              placeholder="Amount (e.g. 12.50)"
+              placeholderTextColor="#9ca3af"
+              value={amount}
+              onChangeText={setAmount}
+            />
 
-        {Object.keys(categoryTotals).length > 0 && (
-          <View style={{ marginTop: 4 }}>
-            {Object.keys(categoryTotals).map((key) => (
-              <Text key={key} style={styles.categoryTotalText}>
-                {key}: ${categoryTotals[key].toFixed(2)}
-              </Text>
-            ))}
+            <TextInput
+              style={styles.input}
+              placeholder="Category (e.g. Food, Groceries)"
+              placeholderTextColor="#9ca3af"
+              value={category}
+              onChangeText={setCategory}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Note (optional)"
+              placeholderTextColor="#9ca3af"
+              value={note}
+              onChangeText={setNote}
+            />
+
+            <Button
+              title={editingId !== null ? 'Save Changes' : 'Add Expense'}
+              onPress={addExpense}
+            />
+
+            {editingId !== null && (
+              <View style={{ marginTop: 8 }}>
+                <Button title="Cancel Edit" onPress={cancelEdit} />
+              </View>
+            )}
           </View>
-        )}
-      </View>
 
-      <FlatList
-        data={expenses}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={renderExpense}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No expenses yet.</Text>
-        }
-      />
+          <View style={styles.totalsSection}>
+            <Text style={styles.totalsHeading}>Totals ({getFilterLabel()})</Text>
+            <Text style={styles.totalAmountText}>
+              Total Spending: ${totalAmount.toFixed(2)}
+            </Text>
+          </View>
 
-      <Text style={styles.footer}>
-        Enter your expenses and they'll be saved locally with SQLite.
-      </Text>
-    </SafeAreaView>
+          {categoryLabels.length > 0 && (
+            <View style={{ marginBottom: 16 }}>
+              <Text style={styles.totalsHeading}>Spending by Category</Text>
+              <BarChart
+                data={chartData}
+                width={screenWidth - 32}
+                height={220}
+                chartConfig={chartConfig}
+                fromZero
+                style={{ marginTop: 8, borderRadius: 8 }}
+              />
+            </View>
+          )}
+
+          <FlatList
+            data={expenses}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={renderExpense}
+            ListEmptyComponent={<Text style={styles.empty}>No expenses yet.</Text>}
+            keyboardShouldPersistTaps="handled"
+          />
+
+          <Text style={styles.footer}>
+            Enter your expenses and they'll be saved locally with SQLite.
+          </Text>
+        </SafeAreaView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: '#111827' },
   heading: { fontSize: 24, fontWeight: '700', color: '#ffffff', marginBottom: 16 },
-  form: { marginBottom: 16, gap: 8 },
+  form: { marginBottom: 16 },
   input: {
     padding: 10,
     backgroundColor: '#1f2937',
@@ -301,7 +340,6 @@ const styles = StyleSheet.create({
   filterButtonActive: { backgroundColor: '#fbbf24' },
   expenseRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#1f2937',
     padding: 12,
     borderRadius: 8,
@@ -310,17 +348,12 @@ const styles = StyleSheet.create({
   expenseAmount: { fontSize: 18, fontWeight: '700', color: '#fbbf24' },
   expenseCategory: { fontSize: 14, color: '#e5e7eb' },
   expenseNote: { fontSize: 12, color: '#9ca3af' },
-  expenseDate: { fontSize: 12, color: '#9ca3af', marginTop: 2 },
-  edit: { color: '#60a5fa', fontSize: 14, marginRight: 12 },
-  delete: { color: '#f87171', fontSize: 20, marginLeft: 12 },
+  expenseDate: { fontSize: 12, color: '#9ca3af' },
+  edit: { color: '#60a5fa', marginRight: 12 },
+  delete: { color: '#f87171', fontSize: 18 },
   empty: { color: '#9ca3af', marginTop: 24, textAlign: 'center' },
   footer: { marginTop: 24, color: '#9ca3af', fontSize: 12, textAlign: 'center' },
-  totalsSection: {
-    backgroundColor: '#111827',
-    paddingVertical: 4,
-    marginBottom: 8,
-  },
-  totalsHeading: { color: '#e5e7eb', fontSize: 14, fontWeight: '700' },
-  totalAmountText: { color: '#fbbf24', fontSize: 16 },
-  categoryTotalText: { color: '#e5e7eb', fontSize: 13 },
+  totalsSection: { marginBottom: 8 },
+  totalsHeading: { color: '#e5e7eb', fontWeight: '700' },
+  totalAmountText: { color: '#fbbf24' },
 });
